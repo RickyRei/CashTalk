@@ -46,20 +46,34 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'chat' | 'analytics'>('dashboard');
   const [dragActive, setDragActive] = useState(false);
   const [showImportGuide, setShowImportGuide] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Calculations & Helpers
-  const totalIncome = transactions
-    .filter(t => t.type === 'income')
-    .reduce((acc, t) => acc + t.amount, 0);
-    
-  const totalExpense = transactions
-    .filter(t => t.type === 'expense')
-    .reduce((acc, t) => acc + t.amount, 0);
-    
-  const balance = totalIncome - totalExpense;
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 4000);
+  };
+
+  // Calculations & Helpers (Optimized with useMemo to prevent recalculations on every component render/input typing)
+  const { totalIncome, totalExpense, balance } = React.useMemo(() => {
+    const inc = transactions
+      .filter(t => t.type === 'income')
+      .reduce((acc, t) => acc + t.amount, 0);
+      
+    const exp = transactions
+      .filter(t => t.type === 'expense')
+      .reduce((acc, t) => acc + t.amount, 0);
+      
+    return {
+      totalIncome: inc,
+      totalExpense: exp,
+      balance: inc - exp
+    };
+  }, [transactions]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -120,25 +134,44 @@ export default function App() {
       
       // If AI detects navigation intention, switch tabs
       if (aiResponse.status === 'navigate' && aiResponse.targetTab) {
+        showToast(`Mengalihkan Anda ke tab ${aiResponse.targetTab === 'analytics' ? 'Grafik' : 'Dashboard'}... 🗺️`, "info");
         setTimeout(() => {
           setActiveTab(aiResponse.targetTab!);
         }, 800); // Small delay so the user reads the redirection message
+      } else if (aiResponse.status === 'confirm' && aiResponse.transactions && aiResponse.transactions.length > 0) {
+        showToast("Transaksi terdeteksi! Silakan klik 'Simpan' untuk mencatat. 💸", "success");
       }
     } catch (error) {
       console.error("Failed to process message:", error);
+      showToast("Gagal memproses pesan via Gemini AI. Pastikan server aktif.", "error");
     } finally {
       setIsLoading(false);
     }
   };
 
   const confirmTransactions = (pending: PendingTransaction[], messageId: string) => {
-    const newTransactions: Transaction[] = pending.map(p => ({
+    // 1. Validation Layer - ensure all data properties extracted are clean and logical
+    const validPending = pending.filter(p => {
+      const isValidType = p.type === 'income' || p.type === 'expense';
+      const isValidAmount = typeof p.amount === 'number' && p.amount > 0;
+      const isValidDesc = typeof p.description === 'string' && p.description.trim().length > 0;
+      return isValidType && isValidAmount && isValidDesc;
+    });
+
+    if (validPending.length === 0) {
+      showToast("⚠️ Data transaksi tidak valid (Nominal tidak sesuai/kosong). Simpan dibatalkan.", "error");
+      return;
+    }
+
+    // 2. Safe Identifier Generation using Date.now() combined with randomized characters to prevent collisions
+    const newTransactions: Transaction[] = validPending.map(p => ({
       ...p,
-      id: Math.random().toString(36).substr(2, 9),
+      id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       date: new Date().toISOString(),
     }));
 
     setTransactions(prev => [...newTransactions, ...prev]);
+    showToast("Transaksi berhasil disimpan! 📈", "success");
     
     // Update message to show confirmed
     setMessages(prev => prev.map(m => 
@@ -184,17 +217,18 @@ export default function App() {
     document.body.removeChild(link);
   };
 
-  // CSV Import Parser
+  // CSV Import Parser with Robust Schema Validation & Error Reporting
   const parseCSVData = (text: string) => {
     try {
       const lines = text.split(/\r?\n/);
       if (lines.length < 2) {
-        alert("File CSV kosong atau format tidak tepat.");
+        showToast("File CSV kosong atau tidak memiliki baris data.", "error");
         return;
       }
 
       const parsed: Transaction[] = [];
       let successCount = 0;
+      let corruptCount = 0;
 
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -217,7 +251,11 @@ export default function App() {
         }
         columns.push(cur.trim());
 
-        if (columns.length < 3) continue;
+        // We require at least description, type, and amount
+        if (columns.length < 3) {
+          corruptCount++;
+          continue;
+        }
 
         let dateVal = new Date().toISOString();
         let typeVal: 'income' | 'expense' = 'expense';
@@ -227,7 +265,6 @@ export default function App() {
 
         if (columns.length >= 5) {
           // Format based on Export: ID Transaksi,Tanggal,Tipe,Kategori,Deskripsi,Jumlah
-          // Or user manual Tanggal,Tipe,Kategori,Deskripsi,Jumlah
           const startIdx = columns.length === 6 ? 1 : 0;
           const rawDate = columns[startIdx];
           if (rawDate && !isNaN(Date.parse(rawDate))) {
@@ -243,41 +280,60 @@ export default function App() {
           const rawAmount = columns[startIdx + 4];
           amountVal = parseFloat(rawAmount?.replace(/[^0-9.-]+/g, "")) || 0;
         } else {
-          // Fallback simple parsing
-          amountVal = parseFloat(columns[columns.length - 1]?.replace(/[^0-9.-]+/g, "")) || 0;
+          // Fallback simple parsing (Tipe/Kategori, Deskripsi, Jumlah)
+          const rawAmount = columns[columns.length - 1];
+          amountVal = parseFloat(rawAmount?.replace(/[^0-9.-]+/g, "")) || 0;
+          
+          const rawType = (columns[0] || '').toLowerCase();
+          typeVal = (rawType.includes('pemasukan') || rawType.includes('income') || rawType.includes('masuk')) ? 'income' : 'expense';
+          
+          descVal = columns[1] || 'Transaksi Impor';
+          catVal = columns[2] || 'lainnya';
         }
 
-        if (amountVal > 0) {
+        // Validate values strictly before pushing
+        const isValidAmount = typeof amountVal === 'number' && amountVal > 0;
+        const isValidDesc = descVal.trim().length > 0;
+
+        if (isValidAmount && isValidDesc) {
           parsed.push({
-            id: 'imp_' + Math.random().toString(36).substr(2, 9),
+            id: `imp_${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
             date: dateVal,
             type: typeVal,
-            category: catVal.toLowerCase().trim(),
+            category: catVal.toLowerCase().trim() || 'lainnya',
             description: descVal,
             amount: amountVal
           });
           successCount++;
+        } else {
+          corruptCount++;
         }
       }
 
       if (successCount > 0) {
         setTransactions(prev => [...parsed, ...prev]);
+        
+        let reportMsg = `Berhasil mengimpor ${successCount} transaksi dari file CSV! 📑`;
+        if (corruptCount > 0) {
+          reportMsg += ` (${corruptCount} baris diabaikan karena format rusak).`;
+        }
+        
         setMessages(prev => [
           ...prev,
           {
             id: 'import_' + Date.now().toString(),
             role: 'assistant',
-            content: `Berhasil mengimpor ${successCount} transaksi dari file Excel/CSV! Transaksi Anda sudah tercatat di dashboard.`,
+            content: reportMsg + ' Data Anda sudah tercatat di sistem kami.',
             timestamp: new Date()
           }
         ]);
-        alert(`Berhasil mengimpor ${successCount} transaksi secara massal!`);
+        showToast(reportMsg, corruptCount > 0 ? "info" : "success");
       } else {
-        alert("Tidak ada baris data valid yang ditemukan untuk diimpor.");
+        showToast("⚠️ Gagal mengimpor. Tidak ada baris data valid yang ditemukan.", "error");
       }
     } catch (e) {
       console.error(e);
-      alert("Terjadi kesalahan saat parsing file CSV.");
+      showToast("Terjadi kesalahan teknis saat membaca file CSV.", "error");
     }
   };
 
@@ -320,25 +376,27 @@ export default function App() {
     }
   };
 
-  // Analytics helpers
-  const parentCategories = ['penjualan', 'bahan baku', 'operasional', 'transportasi', 'makanan', 'lainnya'];
+  // Analytics helpers (Optimized using React.useMemo so calculations only re-run when transactions change)
+  const parentCategories = React.useMemo(() => ['penjualan', 'bahan baku', 'operasional', 'transportasi', 'makanan', 'lainnya'], []);
   
-  const categorySummary = parentCategories.map(cat => {
-    const totalInc = transactions
-      .filter(t => t.type === 'income' && t.category.toLowerCase().trim() === cat)
-      .reduce((s, t) => s + t.amount, 0);
-    const totalExp = transactions
-      .filter(t => t.type === 'expense' && t.category.toLowerCase().trim() === cat)
-      .reduce((s, t) => s + t.amount, 0);
-    return {
-      name: cat.charAt(0).toUpperCase() + cat.slice(1),
-      income: totalInc,
-      expense: totalExp,
-      total: totalInc + totalExp
-    };
-  }).filter(c => c.total > 0);
+  const categorySummary = React.useMemo(() => {
+    return parentCategories.map(cat => {
+      const totalInc = transactions
+        .filter(t => t.type === 'income' && t.category.toLowerCase().trim() === cat)
+        .reduce((s, t) => s + t.amount, 0);
+      const totalExp = transactions
+        .filter(t => t.type === 'expense' && t.category.toLowerCase().trim() === cat)
+        .reduce((s, t) => s + t.amount, 0);
+      return {
+        name: cat.charAt(0).toUpperCase() + cat.slice(1),
+        income: totalInc,
+        expense: totalExp,
+        total: totalInc + totalExp
+      };
+    }).filter(c => c.total > 0);
+  }, [transactions, parentCategories]);
 
-  const getWeeklyTrend = () => {
+  const trendData = React.useMemo(() => {
     const days = Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - i);
@@ -358,13 +416,38 @@ export default function App() {
         expense: exp
       };
     });
-  };
+  }, [transactions]);
 
-  const trendData = getWeeklyTrend();
-  const maxTrendVal = Math.max(...trendData.map(d => Math.max(d.income, d.expense)), 1000);
+  const maxTrendVal = React.useMemo(() => {
+    return Math.max(...trendData.map(d => Math.max(d.income, d.expense)), 1000);
+  }, [trendData]);
 
   return (
     <div className="flex flex-col h-screen max-w-md mx-auto bg-slate-50 shadow-2xl overflow-hidden relative">
+      {/* Toast Notification Banner */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            className="absolute top-4 left-4 right-4 z-[99] p-4 rounded-2xl shadow-xl flex items-center justify-between border text-xs font-bold bg-white"
+            style={{
+              borderColor: toast.type === 'error' ? '#fecaca' : toast.type === 'success' ? '#a7f3d0' : '#e2e8f0',
+              color: toast.type === 'error' ? '#dc2626' : toast.type === 'success' ? '#059669' : '#334155'
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm">{toast.type === 'error' ? '⚠️' : toast.type === 'success' ? '✅' : 'ℹ️'}</span>
+              <span>{toast.message}</span>
+            </div>
+            <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-600 focus:outline-none ml-2">
+              <X size={14} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <header className="p-6 bg-white border-b border-slate-100 flex justify-between items-center z-10">
         <div>
