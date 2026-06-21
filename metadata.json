@@ -1,6 +1,6 @@
 {
-  "name": "CatatUMKM - Asisten Keuangan Pintar",
-  "description": "Asisten keuangan berbasis AI untuk UMKM Indonesia. Catat pemasukan dan pengeluaran semudah chatting.",
+  "name": "CashTalk - Catat Keuangan Cerdas",
+  "description": "Asisten keuangan berbasis AI untuk UMKM Indonesia dengan pembukuan terpisah dan obrolan cerdas.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="glow-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="accent-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa" />
+      <stop offset="100%" stop-color="#2563eb" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Base background circular icon shape -->
+  <circle cx="256" cy="256" r="240" fill="url(#bg-grad)" stroke="#334155" stroke-width="8" filter="url(#shadow)" />
+
+  <!-- Outer ring accent -->
+  <circle cx="256" cy="256" r="236" fill="none" stroke="url(#glow-grad)" stroke-width="2" stroke-opacity="0.3" />
+
+  <!-- Chat Bubble Shape -->
+  <path d="M140,160 h232 c22,0 40,18 40,40 v100 c0,22 -18,40 -40,40 h-112 l-60,45 v-45 h-60 c-22,0 -40,-18 -40,-40 v-100 c0,-22 18,-40 40,-40 z" 
+        fill="url(#bg-grad)" stroke="#334155" stroke-width="6" stroke-linejoin="round" />
+
+  <!-- Inner Chat Accent Line -->
+  <path d="M140,160 h232" fill="none" stroke="url(#accent-grad)" stroke-width="4" stroke-opacity="0.4" stroke-linecap="round" />
+
+  <!-- Trend Graph / Financial Bars inside Chat Bubble -->
+  <g transform="translate(42, 20)">
+    <!-- Column Chart bars -->
+    <rect x="130" y="220" width="16" height="50" rx="4" fill="url(#accent-grad)" opacity="0.6" />
+    <rect x="160" y="195" width="16" height="75" rx="4" fill="url(#accent-grad)" opacity="0.8" />
+    <rect x="190" y="165" width="16" height="105" rx="4" fill="url(#glow-grad)" opacity="0.8" />
+    <rect x="220" y="130" width="16" height="140" rx="4" fill="url(#glow-grad)" />
+
+    <!-- Growth Ascending Sparkline -->
+    <path d="M110,250 Q145,210 175,200 T235,135" fill="none" stroke="#10b981" stroke-width="8" stroke-linecap="round" />
+
+    <!-- Pulsing Arrow pointer -->
+    <path d="M225,135 h14 v14" fill="none" stroke="#10b981" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="232" cy="135" r="4" fill="#ffffff" />
+  </g>
+
+  <!-- Interactive Mic/Chat bubbles micro-accent in corner -->
+  <circle cx="360" cy="190" r="12" fill="#3b82f6" />
+  <circle cx="380" cy="210" r="8" fill="#10b981" />
+</svg>
